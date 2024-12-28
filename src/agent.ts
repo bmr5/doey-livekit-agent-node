@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import OpenAI from 'openai';
 import path from 'path';
 import { z } from 'zod';
-import { supabase } from './config/supabase';
+import { supabase } from './config/supabase.js';
 
 // Load environment variables from .env.local
 config({ path: path.resolve(process.cwd(), '.env.local') });
@@ -99,10 +99,11 @@ export default defineAgent({
           'Create a new category for tasks with automatic or explicit visual identifiers',
         parameters: z.object({
           name: z.string().describe('The category name'),
-          color: z.string().optional().describe('Optional color code'),
+          color: z.string().optional().describe('Optional color code for the category'),
           icon: z.string().optional().describe('Optional icon identifier'),
         }),
         execute: async ({ name, color, icon }) => {
+          console.log('Creating category', name, color, icon);
           // Get suggestions from OpenAI if needed
           if (!color || !icon) {
             const completion = await openai.chat.completions.create({
