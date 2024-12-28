@@ -1,0 +1,84 @@
+name: Voice-Controlled Todo App with LiveKit and LLM
+
+description: |
+  A voice-enabled todo application that uses LiveKit for real-time audio communication,
+  LLM for natural language understanding, and Supabase for data storage. Users can
+  create, read, update, and delete todos through voice commands, with automatic
+  task categorization and priority assignment.
+
+components:
+  - name: LiveKit Agent
+    path: src/agent/
+    description: |
+      Handles voice input processing and LLM interactions
+      - Voice command recognition
+      - Natural language processing
+      - Function context management
+      - Response generation
+
+  - name: Database Functions
+    path: src/functions/
+    description: |
+      CRUD operations for Supabase integration
+      - Create tasks
+      - Read/query tasks
+      - Update task status/details
+      - Delete tasks
+      - Category management
+      - Priority handling
+
+  - name: Types
+    path: src/types/
+    description: |
+      TypeScript type definitions
+      - Task interfaces
+      - Category enums
+      - Priority enums
+      - Response types
+
+  - name: Config
+    path: src/config/
+    description: |
+      Configuration and environment setup
+      - LiveKit credentials
+      - Supabase connection
+      - LLM settings
+
+dependencies:
+  required:
+    - '@livekit/agents'
+    - '@supabase/supabase-js'
+    - 'zod'
+    - 'dotenv'
+
+database:
+  tables:
+    - name: tasks
+      columns:
+        - id: uuid
+        - title: string
+        - description: text
+        - category: string
+        - priority: int
+        - status: string
+        - created_at: timestamp
+        - updated_at: timestamp
+
+llm_functions:
+  - name: createTask
+    description: 'Create a new task with optional category and priority'
+  - name: updateTask
+    description: "Update an existing task's details"
+  - name: completeTask
+    description: 'Mark a task as complete'
+  - name: deleteTask
+    description: 'Remove a task'
+  - name: listTasks
+    description: 'Query tasks with optional filters'
+
+example_commands:
+  - 'Create a new task to buy groceries'
+  - 'Add a high priority task to call mom tomorrow'
+  - 'Show me all my urgent tasks'
+  - 'Mark the grocery shopping task as complete'
+  - 'Delete the task about calling mom'
