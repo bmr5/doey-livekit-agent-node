@@ -9,12 +9,14 @@ import OpenAI from 'openai';
 import path from 'path';
 import { z } from 'zod';
 import { supabase } from './config/supabase.js';
+import { getDefaultCategoryNames } from './types/categories';
 
 // Load environment variables from .env.local
 config({ path: path.resolve(process.cwd(), '.env.local') });
 
 interface TaskContext {
   userId: string;
+  userCategories: string[];
 }
 
 // Initialize OpenAI client
@@ -29,8 +31,19 @@ export default defineAgent({
     const participant = await ctx.waitForParticipant();
     const userId = participant.identity.replace('user_', '');
 
+    // Query user's categories
+    const { data: categories, error: categoryError } = await supabase
+      .from('categories')
+      .select('name')
+      .eq('user_id', userId);
+
+    if (categoryError) {
+      console.error('Error fetching categories:', categoryError);
+    }
+
     const taskContext: TaskContext = {
       userId,
+      userCategories: categories?.map((cat) => cat.name) || getDefaultCategoryNames(),
     };
 
     let model: openaiPlugin.realtime.RealtimeModel;
@@ -59,12 +72,43 @@ export default defineAgent({
           priority: z.number().optional().describe('Task priority (1-5)'),
         }),
         execute: async ({ title, description, category, priority }) => {
+          // Get category and priority suggestions if not provided
+          if (!category || !priority) {
+            const completion = await openai.chat.completions.create({
+              model: 'gpt-4',
+              messages: [
+                {
+                  role: 'user',
+                  content: `Based on this task title: "${title}" ${description ? `and description: "${description}"` : ''}, 
+                    suggest a category and priority level (1-5, where 5 is highest priority).
+                    Response format: {"category": "string", "priority": number}
+                    Available categories: ${taskContext.userCategories.join(', ')}`,
+                },
+              ],
+              temperature: 0.3,
+            });
+
+            const content = completion.choices[0].message.content;
+            if (!content) throw new Error('No content in completion response');
+
+            const suggestions = JSON.parse(content);
+            category = category || suggestions.category.toLowerCase();
+            priority = priority || suggestions.priority;
+          }
+
+          // Validate category exists
+          if (!taskContext.userCategories.includes(category.toLowerCase())) {
+            throw new Error(
+              `Invalid category: ${category}. Available categories: ${taskContext.userCategories.join(', ')}`,
+            );
+          }
+
           const { data, error } = await supabase
             .from('tasks')
             .insert({
               title,
               description,
-              category,
+              category: category.toLowerCase(),
               priority,
               user_id: taskContext.userId,
               status: 'pending',
@@ -73,7 +117,7 @@ export default defineAgent({
             .single();
 
           if (error) throw error;
-          return `Created task "${title}" for user ${taskContext.userId}`;
+          return `Created task "${title}" with category "${category}" and priority ${priority} for user ${taskContext.userId}`;
         },
       },
       listTasks: {
