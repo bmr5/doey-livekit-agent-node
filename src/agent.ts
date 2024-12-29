@@ -9,14 +9,16 @@ import OpenAI from 'openai';
 import path from 'path';
 import { z } from 'zod';
 import { supabase } from './config/supabase.js';
-import { getDefaultCategoryNames } from './types/categories';
+import { createTaskFunction } from './functions/createTask.js';
+import { categoryService } from './services/categories.js';
+import { Category, getDefaultCategoryNames } from './types/categories.js';
 
 // Load environment variables from .env.local
 config({ path: path.resolve(process.cwd(), '.env.local') });
 
-interface TaskContext {
+export interface TaskContext {
   userId: string;
-  userCategories: string[];
+  userCategories: Category[];
 }
 
 // Initialize OpenAI client
@@ -32,18 +34,13 @@ export default defineAgent({
     const userId = participant.identity.replace('user_', '');
 
     // Query user's categories
-    const { data: categories, error: categoryError } = await supabase
-      .from('categories')
-      .select('name')
-      .eq('user_id', userId);
+    const categories = await categoryService.getUserCategories(userId);
 
-    if (categoryError) {
-      console.error('Error fetching categories:', categoryError);
-    }
+    console.log('Categories:', categories);
 
     const taskContext: TaskContext = {
       userId,
-      userCategories: categories?.map((cat) => cat.name) || getDefaultCategoryNames(),
+      userCategories: categories ?? [],
     };
 
     let model: openaiPlugin.realtime.RealtimeModel;
@@ -58,68 +55,27 @@ export default defineAgent({
       });
     } else {
       model = new openaiPlugin.realtime.RealtimeModel({
-        instructions: 'You are a helpful assistant.',
+        instructions: `You are an AI assistant for a voice-controlled todo app. You help users manage their tasks through natural conversation.
+
+You can perform the following actions:
+- Create new tasks (with automatic category and priority assignment)
+- List existing tasks (with optional status filters)
+- Create new categories for task organization
+
+When users speak to you:
+1. Listen for their intent
+2. Use the appropriate function to help them
+3. Respond naturally about what you've done
+
+Available priorities are: Low, Medium, High
+Default categories are: ${taskContext.userCategories.join(', ')}
+
+Always confirm actions you've taken and ask if there's anything else you can help with.`,
       });
     }
 
     const fncCtx: llm.FunctionContext = {
-      createTask: {
-        description: 'Create a new task with optional category and priority',
-        parameters: z.object({
-          title: z.string().describe('The task title'),
-          description: z.string().optional().describe('Optional task description'),
-          category: z.string().optional().describe('Task category'),
-          priority: z.number().optional().describe('Task priority (1-5)'),
-        }),
-        execute: async ({ title, description, category, priority }) => {
-          // Get category and priority suggestions if not provided
-          if (!category || !priority) {
-            const completion = await openai.chat.completions.create({
-              model: 'gpt-4',
-              messages: [
-                {
-                  role: 'user',
-                  content: `Based on this task title: "${title}" ${description ? `and description: "${description}"` : ''}, 
-                    suggest a category and priority level (1-5, where 5 is highest priority).
-                    Response format: {"category": "string", "priority": number}
-                    Available categories: ${taskContext.userCategories.join(', ')}`,
-                },
-              ],
-              temperature: 0.3,
-            });
-
-            const content = completion.choices[0].message.content;
-            if (!content) throw new Error('No content in completion response');
-
-            const suggestions = JSON.parse(content);
-            category = category || suggestions.category.toLowerCase();
-            priority = priority || suggestions.priority;
-          }
-
-          // Validate category exists
-          if (!taskContext.userCategories.includes(category.toLowerCase())) {
-            throw new Error(
-              `Invalid category: ${category}. Available categories: ${taskContext.userCategories.join(', ')}`,
-            );
-          }
-
-          const { data, error } = await supabase
-            .from('tasks')
-            .insert({
-              title,
-              description,
-              category: category.toLowerCase(),
-              priority,
-              user_id: taskContext.userId,
-              status: 'pending',
-            })
-            .select()
-            .single();
-
-          if (error) throw error;
-          return `Created task "${title}" with category "${category}" and priority ${priority} for user ${taskContext.userId}`;
-        },
-      },
+      createTask: createTaskFunction(taskContext),
       listTasks: {
         description: 'List all tasks for the current user',
         parameters: z.object({
