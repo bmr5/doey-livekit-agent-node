@@ -157,14 +157,3 @@ Always confirm actions you've taken and ask if there's anything else you can hel
 });
 
 cli.runApp(new WorkerOptions({ agent: fileURLToPath(import.meta.url) }));
-
-// Add a minimal HTTP server to keep the process alive
-const port = process.env.PORT || 8080;
-http
-  .createServer((_, res) => {
-    res.writeHead(200);
-    res.end('LiveKit Agent Running');
-  })
-  .listen(port, () => {
-    console.log(`Keep-alive server listening on port ${port}`);
-  });
