@@ -4,12 +4,14 @@
 import { type JobContext, WorkerOptions, cli, defineAgent, llm, multimodal } from '@livekit/agents';
 import * as openaiPlugin from '@livekit/agents-plugin-openai';
 import { config } from 'dotenv';
+import http from 'http';
 import { fileURLToPath } from 'node:url';
 import OpenAI from 'openai';
 import path from 'path';
 import { z } from 'zod';
 import { supabase } from './config/supabase.js';
 import { createTaskFunction } from './functions/createTask.js';
+import { listTasksFunction } from './functions/listTasks.js';
 import { categoryService } from './services/categories.js';
 import { Category, getDefaultCategoryNames } from './types/categories.js';
 
@@ -76,24 +78,7 @@ Always confirm actions you've taken and ask if there's anything else you can hel
 
     const fncCtx: llm.FunctionContext = {
       createTask: createTaskFunction(taskContext),
-      listTasks: {
-        description: 'List all tasks for the current user',
-        parameters: z.object({
-          status: z.string().optional().describe('Filter by status'),
-        }),
-        execute: async ({ status }) => {
-          const query = supabase.from('tasks').select('*').eq('user_id', taskContext.userId);
-
-          if (status) {
-            query.eq('status', status);
-          }
-
-          const { data, error } = await query;
-          if (error) throw error;
-
-          return `Found ${data.length} tasks for user ${taskContext.userId}`;
-        },
-      },
+      listTasks: listTasksFunction(taskContext),
       createCategory: {
         description:
           'Create a new category for tasks with automatic or explicit visual identifiers',
@@ -172,3 +157,14 @@ Always confirm actions you've taken and ask if there's anything else you can hel
 });
 
 cli.runApp(new WorkerOptions({ agent: fileURLToPath(import.meta.url) }));
+
+// Add a minimal HTTP server to keep the process alive
+const port = process.env.PORT || 8080;
+http
+  .createServer((_, res) => {
+    res.writeHead(200);
+    res.end('LiveKit Agent Running');
+  })
+  .listen(port, () => {
+    console.log(`Keep-alive server listening on port ${port}`);
+  });

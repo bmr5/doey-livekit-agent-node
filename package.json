@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc",
     "lint": "eslint -f unix \"**/*.ts\"",
-    "start": "node dist/agent.js dev"
+    "start": "PORT=${PORT:-8080} node dist/agent.js dev"
   },
   "packageManager": "pnpm@9.2.0",
   "devDependencies": {
