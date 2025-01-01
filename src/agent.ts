@@ -28,8 +28,38 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+let server: http.Server | null = null;
+
 export default defineAgent({
   entry: async (ctx: JobContext) => {
+    // Cleanup any existing server
+    if (server) {
+      server.close();
+    }
+
+    // Create new server with error handling
+    const port = process.env.PORT || 8080;
+    server = http.createServer((_, res) => {
+      res.writeHead(200);
+      res.end('LiveKit Agent Running');
+    });
+
+    server.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        console.log(`Port ${port} is busy, retrying in 1 second...`);
+        setTimeout(() => {
+          server?.close();
+          server?.listen(port);
+        }, 1000);
+      } else {
+        console.error('Server error:', err);
+      }
+    });
+
+    server.listen(port, () => {
+      console.log(`Keep-alive server listening on port ${port}`);
+    });
+
     await ctx.connect();
 
     const participant = await ctx.waitForParticipant();
